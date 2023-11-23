@@ -32,6 +32,18 @@ namespace xsimd
 
         using namespace types;
 
+        namespace detail
+        {
+            template <class IT, class A, class I, size_t... Is>
+            batch<IT, A> create_expand_swizzle_mask(I bitmask, ::xsimd::detail::index_sequence<Is...>)
+            {
+                batch<IT, A> swizzle_mask(IT(0));
+                IT j = 0;
+                (void)std::initializer_list<bool> { ((swizzle_mask = insert(swizzle_mask, j += ((bitmask >> Is) & 1u), index<Is>())), true)... };
+                return swizzle_mask;
+            }
+        }
+
         // expand
         template <typename A, typename T>
         inline batch<T, A>
@@ -40,13 +52,9 @@ namespace xsimd
         {
             constexpr std::size_t size = batch_bool<T, A>::size;
             auto bitmask = mask.mask();
-            alignas(A::alignment()) as_unsigned_integer_t<T> swizzle_buffer[size];
-            for (size_t i = 0, j = 0; i < size; ++i)
-            {
-                swizzle_buffer[i] = (bitmask & (1u << i)) ? j++ : 0;
-            }
-            auto swizzle_mask = batch<as_unsigned_integer_t<T>, A>::load_aligned(&swizzle_buffer[0]);
-            return select(mask, swizzle(x, swizzle_mask), batch<T, A>(T(0)));
+            auto swizzle_mask = detail::create_expand_swizzle_mask<as_unsigned_integer_t<T>, A>(bitmask, ::xsimd::detail::make_index_sequence<size>());
+            auto z = swizzle(x, swizzle_mask);
+            return select(mask, z, batch<T, A>(T(0)));
         }
 
         // extract_pair
